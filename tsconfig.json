@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "types": ["node"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2019",
+    "lib": ["ES2019", "ES2020", "ES2022.Error"],
+    "removeComments": true,
+    "useUnknownInCatchVariables": false,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "strictNullChecks": true,
+    "preserveConstEnums": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "incremental": true,
+    "declaration": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "outDir": "./dist/"
+  },
+  "include": [
+    "credentials/**/*",
+    "nodes/**/*",
+    "nodes/**/*.json",
+    "package.json",
+    "types/**/*",
+    "utils/**/*"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+	"node": "n8n-nodes-execute-workflow.executeWorkflowCustom",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"details": "Custom Execute Workflow node — extends the built-in with additional options. Use when you want your workflow to treat another workflow as a step in your flow and need the extra features of this community node.",
+	"categories": ["Community"],
+	"resources": {
+		"primaryDocumentation": [
+			{
+				"url": "https://github.com/dimjava/n8n-nodes-execute-workflow"
+			}
+		]
+	},
+	"alias": ["n8n", "call", "sub", "workflow", "sub-workflow", "subworkflow", "custom"],
+	"subcategories": {
+		"Community": ["Helpers", "Flow"]
+	}
+}
