@@ -2,6 +2,10 @@
 
 Custom n8n community node that mirrors the built-in **Execute Sub-workflow** node with additional option to execute sub-workflows in async mode gathering results at the end. In such case batching is recommended.
 
+Usage
+
+![Usage](assets/usage.png)
+
 ## Structure
 
 - **nodes/ExecuteWorkflow/** — Node implementation

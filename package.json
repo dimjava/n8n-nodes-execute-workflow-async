@@ -1,30 +1,26 @@
 {
-  "name": "n8n-nodes-execute-workflow",
+  "name": "n8n-nodes-execute-workflow-async",
   "version": "0.1.0",
-  "description": "Custom Execute Workflow node for n8n — distinguishable from built-in, with configurable changes",
+  "description": "Custom Execute Workflow node for n8n — async supported",
   "license": "MIT",
   "keywords": [
     "n8n-community-node-package",
     "n8n",
     "execute-workflow",
-    "sub-workflow"
+    "sub-workflow",
+    "async"
   ],
-  "author": {
-    "name": "",
-    "email": ""
-  },
+  "author": "",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dimjava/n8n-nodes-execute-workflow.git"
+    "url": "git+https://github.com/dimjava/n8n-nodes-execute-workflow-async.git"
   },
   "scripts": {
     "build": "n8n-node build",
     "build:watch": "tsc --watch",
     "dev": "n8n-node dev",
     "lint": "n8n-node lint",
-    "lint:fix": "n8n-node lint --fix",
-    "release": "n8n-node release",
-    "prepublishOnly": "n8n-node prerelease"
+    "lint:fix": "n8n-node lint --fix"
   },
   "files": [
     "dist"
@@ -58,5 +54,10 @@
   },
   "peerDependencies": {
     "n8n-workflow": "*"
-  }
+  },
+  "main": "index.js",
+  "bugs": {
+    "url": "https://github.com/dimjava/n8n-nodes-execute-workflow-async/issues"
+  },
+  "homepage": "https://github.com/dimjava/n8n-nodes-execute-workflow-async#readme"
 }

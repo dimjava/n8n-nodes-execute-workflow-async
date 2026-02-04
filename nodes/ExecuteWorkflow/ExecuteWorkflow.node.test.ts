@@ -34,7 +34,9 @@ describe('ExecuteWorkflow', () => {
 			.mockReturnValueOnce('each') // mode
 			.mockReturnValueOnce({}) // workflowInputs.value
 			.mockReturnValueOnce([]) // workflowInputs.schema
-			.mockReturnValueOnce(true); // waitForSubWorkflow
+			.mockReturnValueOnce(true) // waitForSubWorkflow (at top of each block)
+			.mockReturnValueOnce(false) // runInParallel
+			.mockReturnValueOnce(true); // waitForSubWorkflow (in loop for item 0)
 
 		executeFunctions.getInputData.mockReturnValue([{ json: { key: 'value' } }]);
 		executeFunctions.getWorkflowDataProxy.mockReturnValue({
@@ -120,7 +122,9 @@ describe('ExecuteWorkflow', () => {
 			.mockReturnValueOnce('each') // mode
 			.mockReturnValueOnce({}) // workflowInputs.value
 			.mockReturnValueOnce([]) // workflowInputs.schema
-			.mockReturnValueOnce(true); // waitForSubWorkflow
+			.mockReturnValueOnce(true) // waitForSubWorkflow
+			.mockReturnValueOnce(false) // runInParallel
+			.mockReturnValueOnce(true); // waitForSubWorkflow (in loop)
 
 		executeFunctions.getNode.mockReturnValue({ typeVersion: 1.2 } as INode);
 
@@ -140,9 +144,11 @@ describe('ExecuteWorkflow', () => {
 			.mockReturnValueOnce({}) // workflowInputs.value (item 1)
 			.mockReturnValueOnce({}) // workflowInputs.value (item 2)
 			.mockReturnValueOnce([]) // workflowInputs.schema
-			.mockReturnValueOnce(true) // waitForSubWorkflow (item 0)
-			.mockReturnValueOnce(true) // waitForSubWorkflow (item 1)
-			.mockReturnValueOnce(true); // waitForSubWorkflow (item 2)
+			.mockReturnValueOnce(true) // waitForSubWorkflow (at top)
+			.mockReturnValueOnce(false) // runInParallel
+			.mockReturnValueOnce(true) // waitForSubWorkflow (in loop item 0)
+			.mockReturnValueOnce(true) // waitForSubWorkflow (in loop item 1)
+			.mockReturnValueOnce(true); // waitForSubWorkflow (in loop item 2)
 
 		executeFunctions.getNode.mockReturnValue({ typeVersion: 1.2 } as INode);
 		executeFunctions.getInputData.mockReturnValueOnce([
@@ -169,7 +175,9 @@ describe('ExecuteWorkflow', () => {
 			.mockReturnValueOnce('each') // mode
 			.mockReturnValueOnce({}) // workflowInputs.value
 			.mockReturnValueOnce([]) // workflowInputs.schema
-			.mockReturnValueOnce(true); // waitForSubWorkflow
+			.mockReturnValueOnce(true) // waitForSubWorkflow
+			.mockReturnValueOnce(false) // runInParallel
+			.mockReturnValueOnce(true); // waitForSubWorkflow (in loop)
 
 		executeFunctions.getNode.mockReturnValue({ typeVersion: 1.3 } as INode);
 
@@ -189,9 +197,11 @@ describe('ExecuteWorkflow', () => {
 			.mockReturnValueOnce({}) // workflowInputs.value (item 1)
 			.mockReturnValueOnce({}) // workflowInputs.value (item 2)
 			.mockReturnValueOnce([]) // workflowInputs.schema
-			.mockReturnValueOnce(true) // waitForSubWorkflow (item 0)
-			.mockReturnValueOnce(true) // waitForSubWorkflow (item 1)
-			.mockReturnValueOnce(true); // waitForSubWorkflow (item 2)
+			.mockReturnValueOnce(true) // waitForSubWorkflow (at top)
+			.mockReturnValueOnce(false) // runInParallel
+			.mockReturnValueOnce(true) // waitForSubWorkflow (in loop item 0)
+			.mockReturnValueOnce(true) // waitForSubWorkflow (in loop item 1)
+			.mockReturnValueOnce(true); // waitForSubWorkflow (in loop item 2)
 
 		executeFunctions.getNode.mockReturnValue({ typeVersion: 1.3 } as INode);
 		executeFunctions.getInputData.mockReturnValueOnce([
@@ -214,13 +224,107 @@ describe('ExecuteWorkflow', () => {
 		]);
 	});
 
+	test('should execute workflow in "each" mode in parallel and sync results at the end', async () => {
+		executeFunctions.getNodeParameter
+			.mockReturnValueOnce('database') // source
+			.mockReturnValueOnce('each') // mode
+			.mockReturnValueOnce({}) // workflowInputs.value (item 0)
+			.mockReturnValueOnce({}) // workflowInputs.value (item 1)
+			.mockReturnValueOnce([]) // workflowInputs.schema
+			.mockReturnValueOnce(true) // waitForSubWorkflow
+			.mockReturnValueOnce(true); // runInParallel
+
+		executeFunctions.getInputData.mockReturnValue([
+			{ json: { key: 'value1' } },
+			{ json: { key: 'value2' } },
+		]);
+		(getWorkflowInfo as jest.Mock).mockResolvedValue({ id: 'subWorkflowId' });
+		(executeFunctions.executeWorkflow as jest.Mock)
+			.mockResolvedValueOnce({
+				executionId: 'subExecutionId1',
+				data: [[{ json: { key: 'result1' } }]],
+			})
+			.mockResolvedValueOnce({
+				executionId: 'subExecutionId2',
+				data: [[{ json: { key: 'result2' } }]],
+			});
+
+		const result = await executeWorkflow.execute.call(executeFunctions);
+
+		expect(result).toEqual([
+			[
+				{
+					json: { key: 'result1' },
+					pairedItem: { item: 0 },
+					metadata: {
+						subExecution: { workflowId: 'subWorkflowId', executionId: 'subExecutionId1' },
+					},
+				},
+				{
+					json: { key: 'result2' },
+					pairedItem: { item: 1 },
+					metadata: {
+						subExecution: { workflowId: 'subWorkflowId', executionId: 'subExecutionId2' },
+					},
+				},
+			],
+		]);
+		expect(executeFunctions.executeWorkflow).toHaveBeenCalledTimes(2);
+	});
+
+	test('should handle parallel execution with continue on fail when one sub-workflow fails', async () => {
+		executeFunctions.getNodeParameter
+			.mockReturnValueOnce('database') // source
+			.mockReturnValueOnce('each') // mode
+			.mockReturnValueOnce({}) // workflowInputs.value (item 0)
+			.mockReturnValueOnce({}) // workflowInputs.value (item 1)
+			.mockReturnValueOnce([]) // workflowInputs.schema
+			.mockReturnValueOnce(true) // waitForSubWorkflow
+			.mockReturnValueOnce(true); // runInParallel
+
+		executeFunctions.getNode.mockReturnValue({ typeVersion: 1.3 } as INode);
+		executeFunctions.getInputData.mockReturnValue([
+			{ json: { key: 'value1' } },
+			{ json: { key: 'value2' } },
+		]);
+		(getWorkflowInfo as jest.Mock).mockResolvedValue({ id: 'subWorkflowId' });
+		(executeFunctions.executeWorkflow as jest.Mock)
+			.mockResolvedValueOnce({
+				executionId: 'subExecutionId1',
+				data: [[{ json: { key: 'result1' } }]],
+			})
+			.mockRejectedValueOnce(new Error('Sub-workflow failed'));
+		(executeFunctions.continueOnFail as jest.Mock).mockReturnValue(true);
+
+		const result = await executeWorkflow.execute.call(executeFunctions);
+
+		expect(result).toEqual([
+			[
+				{
+					json: { key: 'result1' },
+					pairedItem: { item: 0 },
+					metadata: {
+						subExecution: { workflowId: 'subWorkflowId', executionId: 'subExecutionId1' },
+					},
+				},
+				{
+					json: { error: 'Sub-workflow failed' },
+					pairedItem: { item: 1 },
+					metadata: undefined,
+				},
+			],
+		]);
+	});
+
 	test('should throw error if not continuing on fail', async () => {
 		executeFunctions.getNodeParameter
 			.mockReturnValueOnce('database') // source
 			.mockReturnValueOnce('each') // mode
 			.mockReturnValueOnce({}) // workflowInputs.value
 			.mockReturnValueOnce([]) // workflowInputs.schema
-			.mockReturnValueOnce(true); // waitForSubWorkflow
+			.mockReturnValueOnce(true) // waitForSubWorkflow
+			.mockReturnValueOnce(false) // runInParallel
+			.mockReturnValueOnce(true); // waitForSubWorkflow (in loop)
 
 		(getWorkflowInfo as jest.Mock).mockRejectedValue(new Error('Test error'));
 		(executeFunctions.continueOnFail as jest.Mock).mockReturnValue(false);

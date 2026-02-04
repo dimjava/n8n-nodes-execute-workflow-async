@@ -7,7 +7,7 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 
-import { findPairedItemThroughWorkflowData } from './../../utils/workflow-backtracking';
+import { findPairedItemThroughWorkflowData } from '../../utils/workflow-backtracking';
 import { getWorkflowInfo } from './GenericFunctions';
 import { localResourceMapping } from './methods';
 import { generatePairedItemData } from '../../utils/utilities';
@@ -15,16 +15,17 @@ import { getCurrentWorkflowInputData } from '../../utils/workflowInputsResourceM
 
 export class ExecuteWorkflow implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'Execute Sub-workflow',
-		name: 'executeWorkflow',
+		displayName: 'Execute Sub-workflow (Async Supported)',
+		name: 'executeWorkflowAsync',
 		icon: 'fa:sign-in-alt',
 		iconColor: 'orange-red',
 		group: ['transform'],
-		version: [1, 1.1, 1.2, 1.3],
+		// version: [1, 1.1, 1.2, 1.3],
+		version: [1, 2, 3, 4],  // dummy versions because n8n uses decimal versions, but we need integer
 		subtitle: '={{"Workflow: " + $parameter["workflowId"]}}',
-		description: 'Execute another workflow',
+		description: 'Execute another workflow (async supported)',
 		defaults: {
-			name: 'Execute Workflow',
+			name: 'Execute Workflow (Async Supported)',
 			color: '#ff6d5a',
 		},
 		inputs: [NodeConnectionTypes.Main],
@@ -268,6 +269,14 @@ export class ExecuteWorkflow implements INodeType {
 						description:
 							'Whether the main workflow should wait for the sub-workflow to complete its execution before proceeding',
 					},
+					{
+						displayName: 'Run in Parallel',
+						name: 'runInParallel',
+						type: 'boolean',
+						default: false,
+						description:
+							'When running once for each item and waiting for completion, start all sub-workflow executions in parallel and sync results at the end. Only applies when Mode is "Run once for each item" and "Wait For Sub-Workflow Completion" is on.',
+					},
 				],
 			},
 		],
@@ -297,18 +306,99 @@ export class ExecuteWorkflow implements INodeType {
 		const currentWorkflowId = workflowProxy.$workflow.id as string;
 
 		if (mode === 'each') {
+			const waitForSubWorkflow = this.getNodeParameter(
+				'options.waitForSubWorkflow',
+				0,
+				true,
+			) as boolean;
+			const runInParallel = this.getNodeParameter(
+				'options.runInParallel',
+				0,
+				false,
+			) as boolean;
+
+			if (waitForSubWorkflow && runInParallel && items.length > 0) {
+				const promises = items.map(async (item, i) => {
+					const workflowInfo = await getWorkflowInfo.call(this, source, i);
+					const executionResult = await this.executeWorkflow(
+						workflowInfo,
+						[item],
+						undefined,
+						{
+							parentExecution: {
+								executionId: workflowProxy.$execution.id,
+								workflowId: workflowProxy.$workflow.id,
+								shouldResume: true,
+							},
+							executionMode: this.getMode(),
+						},
+					);
+					return { i, workflowInfo, executionResult };
+				});
+
+				const settled = await Promise.allSettled(promises);
+				const returnData: INodeExecutionData[][] = [];
+				const nodeVersion = this.getNode().typeVersion;
+
+				for (const [idx, result] of settled.entries()) {
+					if (result.status === 'fulfilled') {
+						const { i, workflowInfo, executionResult } = result.value;
+						const workflowResult = executionResult.data as INodeExecutionData[][];
+
+						for (const [outputIndex, outputData] of workflowResult.entries()) {
+							for (const outputItem of outputData) {
+								outputItem.pairedItem = { item: i };
+								outputItem.metadata = {
+									subExecution: {
+										executionId: executionResult.executionId,
+										workflowId: workflowInfo.id ?? currentWorkflowId,
+									},
+								};
+							}
+
+							returnData[outputIndex] ??= [];
+							returnData[outputIndex].push(...outputData);
+						}
+					} else {
+						const error = result.reason as Error;
+						if (this.continueOnFail()) {
+							const outputIndex = nodeVersion >= 1.3 ? 0 : idx;
+							returnData[outputIndex] ??= [];
+							const metadata = parseErrorMetadata(error);
+							returnData[outputIndex].push({
+								json: { error: error.message },
+								pairedItem: { item: idx },
+								metadata,
+							});
+						} else {
+							throw new NodeOperationError(this.getNode(), error, {
+								message: `Error executing workflow with item at index ${idx}`,
+								description: error.message,
+								itemIndex: idx,
+							});
+						}
+					}
+				}
+
+				this.setMetadata({
+					subExecutionsCount: items.length,
+				});
+
+				return returnData;
+			}
+
 			const returnData: INodeExecutionData[][] = [];
 
 			for (let i = 0; i < items.length; i++) {
 				try {
-					const waitForSubWorkflow = this.getNodeParameter(
+					const waitForSubWorkflowItem = this.getNodeParameter(
 						'options.waitForSubWorkflow',
 						i,
 						true,
 					) as boolean;
 					const workflowInfo = await getWorkflowInfo.call(this, source, i);
 
-					if (waitForSubWorkflow) {
+					if (waitForSubWorkflowItem) {
 						const executionResult: ExecuteWorkflowData = await this.executeWorkflow(
 							workflowInfo,
 							[items[i]],
@@ -317,7 +407,7 @@ export class ExecuteWorkflow implements INodeType {
 								parentExecution: {
 									executionId: workflowProxy.$execution.id,
 									workflowId: workflowProxy.$workflow.id,
-									shouldResume: waitForSubWorkflow,
+									shouldResume: waitForSubWorkflowItem,
 								},
 								executionMode: this.getMode(),
 							},
@@ -351,7 +441,7 @@ export class ExecuteWorkflow implements INodeType {
 								parentExecution: {
 									executionId: workflowProxy.$execution.id,
 									workflowId: workflowProxy.$workflow.id,
-									shouldResume: waitForSubWorkflow,
+									shouldResume: waitForSubWorkflowItem,
 								},
 								executionMode: this.getMode(),
 							},
